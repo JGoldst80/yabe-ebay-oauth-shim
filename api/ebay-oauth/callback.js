@@ -1,46 +1,46 @@
-// Vercel serverless function: handle callback from eBay to redirect back to ChatGPT builder
+// /api/ebay-oauth/callback
+export default async function handler(req, res) {
+  try {
+    const code = req.query.code;
+    const state = req.query.state;
 
-function decodeState(str) {
-  // Convert URL-safe base64 to standard base64
-  str = str.replace(/-/g, '+').replace(/_/g, '/');
-  // Add padding if necessary
-  while (str.length % 4) {
-    str += '=';
-  }
-  const json = Buffer.from(str, 'base64').toString();
-  return JSON.parse(json);
-}
-
-module.exports = (req, res) => {
-  const { code, state } = req.query;
-  let saved = null;
-
-  // Retrieve the ebay_oauth_state cookie
-  const cookie = req.headers.cookie || '';
-  const match = cookie.match(/ebay_oauth_state=([^;]+)/);
-  if (match) {
-    try {
-      saved = decodeState(match[1]);
-    } catch (err) {
-      // ignore decoding errors
+    if (!code || !state) {
+      return res.status(400).json({ error: 'missing_code_or_state' });
     }
+
+    // Recover builder redirect + state from cookies
+    const cookieHeader = req.headers.cookie || '';
+    const uriMatch = cookieHeader.match(/(?:^|;)\s*builder_redirect_uri=([^;]+)/);
+    const stateMatch = cookieHeader.match(/(?:^|;)\s*builder_state=([^;]+)/);
+
+    const builderRedirectFromCookie = uriMatch ? decodeURIComponent(uriMatch[1]) : null;
+    const builderStateFromCookie = stateMatch ? decodeURIComponent(stateMatch[1]) : null;
+
+    // Fallback to env var if cookie missing
+    const builderReturnUrl = builderRedirectFromCookie || process.env.OPENAI_BUILDER_CALLBACK;
+    if (!builderReturnUrl) {
+      return res.status(500).json({ error: 'missing_builder_return_url' });
+    }
+
+    // Optional: warn if state differs (builder still validates)
+    if (builderStateFromCookie && builderStateFromCookie !== state) {
+      console.warn('state mismatch', { expected: builderStateFromCookie, returned: state });
+    }
+
+    // Append both code + state for the builder
+    const redirect = new URL(builderReturnUrl);
+    redirect.searchParams.set('code', code);
+    redirect.searchParams.set('state', state);
+
+    // Clear cookies
+    res.setHeader('Set-Cookie', [
+      'builder_redirect_uri=; Path=/api/ebay-oauth; Max-Age=0; HttpOnly; Secure; SameSite=None',
+      'builder_state=; Path=/api/ebay-oauth; Max-Age=0; HttpOnly; Secure; SameSite=None',
+    ]);
+
+    return res.redirect(302, redirect.toString());
+  } catch (err) {
+    console.error('callback error', err);
+    return res.status(500).json({ error: 'callback_failure' });
   }
-
-  // Validate code and state
-  if (!code || !state || !saved || state !== saved.state) {
-    res.statusCode = 400;
-    res.end('Invalid state or missing code');
-    return;
-  }
-
-  // Clear the cookie
-  res.setHeader('Set-Cookie', 'ebay_oauth_state=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0');
-
-  const redirectUri = saved.redirect_uri;
-
-  // Redirect back to the builder's redirect_uri with the code and state
-  res.writeHead(302, {
-    Location: `${redirectUri}?code=${code}&state=${state}`,
-  });
-  res.end();
-};
+}
