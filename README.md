@@ -21,3 +21,6 @@ which require `redirect_uri` = your **RuName**.
 ## Test (optional)
 - Visit: `https://<vercel-domain>/api/ebay-oauth/authorize?scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope&state=ping`
 - Curl:  `curl -sS -X POST https://<vercel-domain>/api/ebay-oauth/token -H 'Content-Type: application/x-www-form-urlencoded' --data 'grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope'`
+
+
+Small update to trigger redeploy.
