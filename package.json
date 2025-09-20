@@ -1,0 +1,11 @@
+{
+  "name": "yabe-ebay-oauth-shim",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "description": "Minimal Vercel serverless OAuth shim for eBay SELL flows (RuName redirect)"
+}
