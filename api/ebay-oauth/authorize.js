@@ -1,37 +1,43 @@
-// Vercel serverless function: store builder's redirect_uri & state in cookie and redirect to eBay with RuName
-const EBAY_CLIENT_ID = process.env.EBAY_CLIENT_ID;
-const EBAY_RUNAME    = process.env.EBAY_RUNAME; // exact RuName string
+// /api/ebay-oauth/authorize
+export default async function handler(req, res) {
+  try {
+    const stateFromBuilder = req.query.state;
+    const builderRedirectUri = req.query.redirect_uri; // ChatGPT builder will send this
 
-// Helper to base64url encode JSON object
-function encodeState(obj) {
-  const json = JSON.stringify(obj);
-  const base64 = Buffer.from(json).toString('base64');
-  // Convert to URL-safe base64
-  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
+    if (!stateFromBuilder || !builderRedirectUri) {
+      return res.status(400).json({ error: 'missing_state_or_redirect_uri' });
+    }
 
-module.exports = (req, res) => {
-  // The ChatGPT builder calls this endpoint with client_id, redirect_uri, scope, state
-  const { redirect_uri, scope, state } = req.query;
+    // Persist builder redirect + state in cookies for 10 minutes
+    res.setHeader('Set-Cookie', [
+      `builder_redirect_uri=${encodeURIComponent(builderRedirectUri)}; Path=/api/ebay-oauth; HttpOnly; Secure; SameSite=None; Max-Age=600`,
+      `builder_state=${encodeURIComponent(stateFromBuilder)}; Path=/api/ebay-oauth; HttpOnly; Secure; SameSite=None; Max-Age=600`,
+    ]);
 
-  // Save the builder's redirect_uri and state in a cookie for later
-  if (redirect_uri && state) {
-    const cookieValue = encodeState({ redirect_uri, state });
-    // Set cookie for 5 minutes
-    res.setHeader('Set-Cookie', `ebay_oauth_state=${cookieValue}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=300`);
+    // eBay requested scopes (space-separated)
+    const scope = [
+      'https://api.ebay.com/oauth/api_scope/sell.inventory',
+      'https://api.ebay.com/oauth/api_scope/sell.account',
+      'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
+      'https://api.ebay.com/oauth/api_scope/buy.browse',
+    ].join(' ');
+
+    // Construct eBay authorize URL
+    const auth = new URL('https://auth.ebay.com/oauth2/authorize');
+    auth.searchParams.set('client_id', process.env.EBAY_CLIENT_ID);
+    auth.searchParams.set('response_type', 'code');
+
+    // IMPORTANT: eBay requires your registered RuName here (not the builder URL)
+    auth.searchParams.set('redirect_uri', process.env.EBAY_RUNAME);
+
+    auth.searchParams.set('scope', scope);
+
+    // Echo the builder's state unchanged so the builder can validate later
+    auth.searchParams.set('state', stateFromBuilder);
+
+    return res.redirect(302, auth.toString());
+  } catch (err) {
+    console.error('authorize error', err);
+    return res.status(500).json({ error: 'authorize_failure' });
   }
-
-  // Construct eBay authorization URL using RuName as redirect_uri
-  const params = new URLSearchParams({
-    client_id: EBAY_CLIENT_ID,
-    redirect_uri: EBAY_RUNAME,
-    response_type: 'code',
-    scope: scope || '',
-    state: state || '',
-  });
-
-  res.writeHead(302, {
-    Location: `https://auth.ebay.com/oauth2/authorize?${params.toString()}`,
-  });
-  res.end();
-};
+}
