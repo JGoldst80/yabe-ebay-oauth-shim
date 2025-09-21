@@ -1,9 +1,10 @@
 // /api/ebay-oauth/callback
 export default async function handler(req, res) {
   try {
+    // eBay should send code (always) and state (usually)
     const code = req.query.code;
 
-    // Grab cookies set in /authorize
+    // Cookies set by /authorize
     const cookieHeader = req.headers.cookie || '';
     const uriMatch = cookieHeader.match(/(?:^|;)\s*builder_redirect_uri=([^;]+)/);
     const stateMatch = cookieHeader.match(/(?:^|;)\s*builder_state=([^;]+)/);
@@ -11,19 +12,20 @@ export default async function handler(req, res) {
     const builderRedirectFromCookie = uriMatch ? decodeURIComponent(uriMatch[1]) : null;
     const builderStateFromCookie = stateMatch ? decodeURIComponent(stateMatch[1]) : null;
 
-    // If state missing in query, use the cookie copy
+    // If state missing in query, fall back to cookie copy
     const state = req.query.state || builderStateFromCookie;
 
     if (!code || !state) {
       return res.status(400).json({ error: 'missing_code_or_state' });
     }
 
-    // Fallback to env var if cookie redirect missing
+    // Fallback to env var if cookie redirect is missing
     const builderReturnUrl = builderRedirectFromCookie || process.env.OPENAI_BUILDER_CALLBACK;
     if (!builderReturnUrl) {
       return res.status(500).json({ error: 'missing_builder_return_url' });
     }
 
+    // Build final redirect back to builder
     const redirect = new URL(builderReturnUrl);
     redirect.searchParams.set('code', code);
     redirect.searchParams.set('state', state);
@@ -40,3 +42,4 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'callback_failure' });
   }
 }
+
