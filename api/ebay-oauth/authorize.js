@@ -18,7 +18,6 @@ export default async function handler(req, res) {
       'https://api.ebay.com/oauth/api_scope/sell.inventory',
       'https://api.ebay.com/oauth/api_scope/sell.account.readonly',
       'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
-      'https://api.ebay.com/oauth/api_scope/buy.browse'
     ].join(' ');
 
     const auth = new URL('https://auth.ebay.com/oauth2/authorize');
